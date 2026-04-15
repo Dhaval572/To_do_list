@@ -1,4 +1,3 @@
-```markdown
 # ✅ Smart Todo List with Redis – C++23 Terminal App
 
 A **feature‑rich, production‑ready** todo list application with Redis backend, beautiful terminal UI, and smart validation. Built with modern C++23 for high performance and readability.
