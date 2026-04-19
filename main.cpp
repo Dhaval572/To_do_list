@@ -215,13 +215,14 @@ public:
                 task.status = task_json["status"];
                 task.created_at = task_json["created_at"];
                 task.completed_at = task_json.value("completed_at", "");
-                tasks.push_back(std::move(task));
+                tasks.emplace_back(std::move(task));
             }
         }
 
         freeReplyObject(reply);
 
-        const std::map<std::string_view, int> priority_order = {
+        const std::map<std::string_view, int> priority_order =
+        {
             {"critical"sv, 5}, {"high"sv, 4}, {"medium"sv, 3}, {"low"sv, 2}
         };
 
