@@ -1,6 +1,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <map>
 #include <algorithm>
@@ -15,20 +16,21 @@
 #include "json.hpp"
 
 using json = nlohmann::json;
+using namespace std::literals;
 
-// ANSI Color Codes 
-namespace Color 
+// ANSI Color Codes
+namespace Color
 {
-    constexpr auto RESET   = "\033[0m";
-    constexpr auto RED     = "\033[91m";
-    constexpr auto GREEN   = "\033[92m";
-    constexpr auto YELLOW  = "\033[93m";
-    constexpr auto BLUE    = "\033[94m";
-    constexpr auto CYAN    = "\033[96m";
-    constexpr auto BOLD    = "\033[1m";
+    constexpr auto RESET   = "\033[0m"sv;
+    constexpr auto RED     = "\033[91m"sv;
+    constexpr auto GREEN   = "\033[92m"sv;
+    constexpr auto YELLOW  = "\033[93m"sv;
+    constexpr auto BLUE    = "\033[94m"sv;
+    constexpr auto CYAN    = "\033[96m"sv;
+    constexpr auto BOLD    = "\033[1m"sv;
 }
 
-// Helper Functions 
+// Helper Functions
 namespace Helper
 {
     [[nodiscard]] std::string get_current_time()
@@ -46,7 +48,7 @@ namespace Helper
     }
 }
 
-// Task Structure 
+// Task Structure
 struct Task
 {
     int id;
@@ -58,7 +60,7 @@ struct Task
     std::string completed_at;
 };
 
-// Date Validation (No exceptions)
+// Date Validation (Zero overhead with string_view)
 namespace DateValidation
 {
     struct Result
@@ -70,45 +72,45 @@ namespace DateValidation
         int year;
     };
 
-    [[nodiscard]] Result validate(const std::string& date_str)
+    [[nodiscard]] Result validate(std::string_view date_str)
     {
-        if (date_str.size() != 10) 
+        if (date_str.size() != 10)
             return {false, "Date must be in DD-MM-YYYY format", 0, 0, 0};
-        
+
         if (date_str[2] != '-' || date_str[5] != '-')
             return {false, "Use DD-MM-YYYY format (dashes in positions 2 and 5)", 0, 0, 0};
-        
+
         int day, month, year;
         auto result1 = std::from_chars(date_str.data(), date_str.data() + 2, day);
         auto result2 = std::from_chars(date_str.data() + 3, date_str.data() + 5, month);
         auto result3 = std::from_chars(date_str.data() + 6, date_str.data() + 10, year);
-        
+
         if (result1.ec != std::errc() || result2.ec != std::errc() || result3.ec != std::errc())
             return {false, "Invalid numbers in date", 0, 0, 0};
-        
+
         if (year < 2000 || year > 2100)
             return {false, "Year must be between 2000 and 2100", 0, 0, 0};
-        
+
         if (month < 1 || month > 12)
             return {false, "Month must be between 01 and 12", 0, 0, 0};
-        
-        const int days_in_month[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+
+        constexpr std::array<int, 12> days_in_month{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
         int max_days = days_in_month[month - 1];
-        
+
         if (month == 2)
         {
             bool is_leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
             if (is_leap) max_days = 29;
         }
-        
+
         if (day < 1 || day > max_days)
             return {false, "Invalid day for this month", 0, 0, 0};
-        
+
         return {true, "", day, month, year};
     }
 }
 
-// Redis Connection Manager 
+// Redis Connection Manager
 class RedisConnection
 {
 private:
@@ -176,7 +178,7 @@ public:
         init_counter_if_needed();
     }
 
-    int add_task(const std::string& title, const std::string& priority = "medium", const std::string& due_date = "")
+    int add_task(std::string_view title, std::string_view priority = "medium", std::string_view due_date = "")
     {
         int task_id = get_next_id();
 
@@ -219,8 +221,8 @@ public:
 
         freeReplyObject(reply);
 
-        const std::map<std::string, int> priority_order = {
-            {"critical", 5}, {"high", 4}, {"medium", 3}, {"low", 2}
+        const std::map<std::string_view, int> priority_order = {
+            {"critical"sv, 5}, {"high"sv, 4}, {"medium"sv, 3}, {"low"sv, 2}
         };
 
         std::ranges::sort(tasks, [&](const Task& a, const Task& b)
@@ -273,16 +275,16 @@ public:
         redisCommand(redis_->get(), "SET %s 0", counter_key_.c_str());
     }
 
-    [[nodiscard]] std::vector<Task> search_tasks(const std::string& keyword)
+    [[nodiscard]] std::vector<Task> search_tasks(std::string_view keyword)
     {
-        std::vector<Task> all_tasks = get_all_tasks();
+        auto all_tasks = get_all_tasks();
         std::vector<Task> results;
 
         for (const auto& task : all_tasks)
         {
-            if (task.title.find(keyword) != std::string::npos)
+            if (task.title.contains(keyword))
             {
-                results.push_back(task);
+                results.emplace_back(task);
             }
         }
 
@@ -304,7 +306,7 @@ namespace Display
 
     void menu()
     {
-        std::cout << Color::YELLOW << Color::BOLD << "📌 MAIN MENU" << Color::RESET << "\n";
+        std::cout << Color::YELLOW << Color::BOLD << "📌 MAIN MENU" << Color::RESET << '\n';
         std::cout << Color::GREEN << "1." << Color::RESET << " ➕ Add Task\n";
         std::cout << Color::GREEN << "2." << Color::RESET << " 📋 List Tasks\n";
         std::cout << Color::GREEN << "3." << Color::RESET << " ✅ Complete Task\n";
@@ -328,11 +330,13 @@ namespace Display
 
         for (const auto& task : task_list)
         {
-            std::string status_icon = (task.status == "completed")
-                ? std::string(Color::GREEN) + "✅" + Color::RESET
-                : std::string(Color::RED) + "⏳" + Color::RESET;
+            std::string status_icon;
+            if (task.status == "completed")
+                status_icon = std::string(Color::GREEN) + "✅" + std::string(Color::RESET);
+            else
+                status_icon = std::string(Color::RED) + "⏳" + std::string(Color::RESET);
 
-            const char* priority_color = Color::GREEN;
+            std::string_view priority_color = Color::GREEN;
             if (task.priority == "critical") priority_color = Color::RED;
             else if (task.priority == "high") priority_color = Color::YELLOW;
             else if (task.priority == "medium") priority_color = Color::BLUE;
@@ -343,9 +347,9 @@ namespace Display
 
             if (!task.due_date.empty())
             {
-                std::cout << " (due: " << task.due_date << ")";
+                std::cout << " (due: " << task.due_date << ')';
             }
-            std::cout << "\n";
+            std::cout << '\n';
         }
 
         std::cout << Color::CYAN << "──────────────────────────────────────────────────────────\n" << Color::RESET;
@@ -355,7 +359,7 @@ namespace Display
 // Input Handling Functions
 namespace Input
 {
-    std::string get_line(const std::string& prompt)
+    std::string get_line(std::string_view prompt)
     {
         std::cout << prompt;
         std::string line;
@@ -363,7 +367,7 @@ namespace Input
         return line;
     }
 
-    std::optional<int> get_task_id(const std::string& prompt)
+    std::optional<int> get_task_id(std::string_view prompt)
     {
         std::string input = get_line(prompt);
         int value;
@@ -380,17 +384,17 @@ namespace Input
     {
         while (true)
         {
-            std::string prompt = std::string(Color::GREEN) + "Due date (DD-MM-YYYY) or press Enter to skip: " + Color::RESET;
+            std::string prompt = std::string(Color::GREEN) + "Due date (DD-MM-YYYY) or press Enter to skip: " + std::string(Color::RESET);
             std::string date = get_line(prompt);
-            
+
             if (date.empty()) return "";
-            
+
             auto result = DateValidation::validate(date);
             if (result.valid)
             {
                 return date;
             }
-            std::cout << Color::RED << "❌ " << result.error_message << "\n" << Color::RESET;
+            std::cout << Color::RED << "❌ " << result.error_message << '\n' << Color::RESET;
         }
     }
 }
@@ -403,26 +407,26 @@ private:
 
     void handle_add_task()
     {
-        std::string prompt = std::string(Color::GREEN) + "Title: " + Color::RESET;
+        std::string prompt = std::string(Color::GREEN) + "Title: " + std::string(Color::RESET);
         std::string title = Input::get_line(prompt);
-        
+
         if (title.empty())
         {
             std::cout << Color::RED << "❌ Title cannot be empty.\n" << Color::RESET;
             return;
         }
 
-        prompt = std::string(Color::GREEN) + "Priority (low/medium/high/critical) [medium]: " + Color::RESET;
+        prompt = std::string(Color::GREEN) + "Priority (low/medium/high/critical) [medium]: " + std::string(Color::RESET);
         std::string priority = Input::get_line(prompt);
-        
+
         if (priority != "low" && priority != "medium" && priority != "high" && priority != "critical")
         {
             priority = "medium";
         }
 
-        prompt = std::string(Color::GREEN) + "Add due date? (y/n): " + Color::RESET;
+        prompt = std::string(Color::GREEN) + "Add due date? (y/n): " + std::string(Color::RESET);
         std::string add_due = Input::get_line(prompt);
-        
+
         std::string due_date = (add_due == "y" || add_due == "Y") ? Input::get_valid_date() : "";
 
         int new_id = repository_.add_task(title, priority, due_date);
@@ -431,15 +435,15 @@ private:
 
     void handle_list_tasks()
     {
-        std::vector<Task> tasks = repository_.get_all_tasks();
+        auto tasks = repository_.get_all_tasks();
         Display::tasks(tasks);
     }
 
     void handle_complete_task()
     {
-        std::string prompt = std::string(Color::GREEN) + "Enter Task number to complete: " + Color::RESET;
-        std::optional<int> task_id = Input::get_task_id(prompt);
-        
+        std::string prompt = std::string(Color::GREEN) + "Enter Task number to complete: " + std::string(Color::RESET);
+        auto task_id = Input::get_task_id(prompt);
+
         if (!task_id) return;
 
         if (repository_.complete_task(*task_id))
@@ -454,9 +458,9 @@ private:
 
     void handle_delete_task()
     {
-        std::string prompt = std::string(Color::GREEN) + "Enter Task number to delete: " + Color::RESET;
-        std::optional<int> task_id = Input::get_task_id(prompt);
-        
+        std::string prompt = std::string(Color::GREEN) + "Enter Task number to delete: " + std::string(Color::RESET);
+        auto task_id = Input::get_task_id(prompt);
+
         if (!task_id) return;
 
         if (repository_.delete_task(*task_id))
@@ -471,10 +475,10 @@ private:
 
     void handle_search_tasks()
     {
-        std::string prompt = std::string(Color::GREEN) + "Enter keyword to search: " + Color::RESET;
+        std::string prompt = std::string(Color::GREEN) + "Enter keyword to search: " + std::string(Color::RESET);
         std::string keyword = Input::get_line(prompt);
-        
-        std::vector<Task> results = repository_.search_tasks(keyword);
+
+        auto results = repository_.search_tasks(keyword);
 
         if (results.empty())
         {
@@ -488,9 +492,9 @@ private:
 
     void handle_clear_all_tasks()
     {
-        std::string prompt = std::string(Color::RED) + "⚠️  Delete ALL tasks? (y/n): " + Color::RESET;
+        std::string prompt = std::string(Color::RED) + "⚠️  Delete ALL tasks? (y/n): " + std::string(Color::RESET);
         std::string confirm = Input::get_line(prompt);
-        
+
         if (confirm == "y" || confirm == "Y")
         {
             repository_.delete_all_tasks();
@@ -508,7 +512,7 @@ public:
             Display::header();
             Display::menu();
 
-            std::string prompt = std::string(Color::BOLD) + "👉 Enter your choice: " + Color::RESET;
+            std::string prompt = std::string(Color::BOLD) + "👉 Enter your choice: " + std::string(Color::RESET);
             std::string choice = Input::get_line(prompt);
 
             if (choice == "1") handle_add_task();
